@@ -1416,6 +1416,8 @@ static struct {
     {"CMYK",    "CMYKXX",       48,     copy4skip2},
     {"CMYK",    "CMYK;I",       32,     unpackCMYKI},
     {"CMYK",    "CMYK;L",       32,     unpackRGBAL},
+    {"CMYK",    "CMYK;16L",     64,     unpackRGBA16L},
+    {"CMYK",    "CMYK;16B",     64,     unpackRGBA16B},
     {"CMYK",    "C",            8,      band0},
     {"CMYK",    "M",            8,      band1},
     {"CMYK",    "Y",            8,      band2},
