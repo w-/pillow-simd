@@ -624,6 +624,10 @@ class TestFileJpeg(PillowTestCase):
         im = Image.open("Tests/images/app13.jpg")
         self.assertNotIn("photoshop", im.info)
 
+    def test_icc_after_SOF(self):
+        with Image.open("Tests/images/icc-after-SOF.jpg") as im:
+            assert im.info["icc_profile"] == b"profile"
+
 
 @unittest.skipUnless(sys.platform.startswith('win32'), "Windows only")
 class TestFileCloseW32(PillowTestCase):
