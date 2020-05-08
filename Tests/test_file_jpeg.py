@@ -581,6 +581,10 @@ class TestFileJpeg(PillowTestCase):
         # OSError for unidentified image.
         self.assertEqual(im.info.get("dpi"), (72, 72))
 
+    def test_icc_after_SOF(self):
+        with Image.open("Tests/images/icc-after-SOF.jpg") as im:
+            assert im.info["icc_profile"] == b"profile"
+
 
 @unittest.skipUnless(sys.platform.startswith('win32'), "Windows only")
 class TestFileCloseW32(PillowTestCase):
