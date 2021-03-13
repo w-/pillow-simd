@@ -3,6 +3,8 @@
 #include <math.h>
 
 #define ROUND_UP(f) ((int)((f) >= 0.0 ? (f) + 0.5F : (f)-0.5F))
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 struct filter {
     double (*filter)(double x);
@@ -195,9 +197,7 @@ precompute_coeffs(
 
     /* prepare for horizontal stretch */
     filterscale = scale = (double)(in1 - in0) / outSize;
-    if (filterscale < 1.0) {
-        filterscale = 1.0;
-    }
+    filterscale = MAX(filterscale, 1.0);
 
     /* determine support size (length of resampling filter) */
     support = filterp->support * filterscale;
@@ -229,30 +229,29 @@ precompute_coeffs(
 
     for (xx = 0; xx < outSize; xx++) {
         center = in0 + (xx + 0.5) * scale;
-        ww = 0.0;
         ss = 1.0 / filterscale;
         // Round the value
         xmin = (int)(center - support + 0.5);
-        if (xmin < 0) {
-            xmin = 0;
-        }
+        xmin = MAX(xmin, 0);
         // Round the value
         xmax = (int)(center + support + 0.5);
-        if (xmax > inSize) {
-            xmax = inSize;
-        }
+        xmax = MIN(xmax, inSize);
         xmax -= xmin;
+
+        // Compute all coefficients for convolution
+        ww = 0.0;
         k = &kk[xx * ksize];
         for (x = 0; x < xmax; x++) {
-            double w = filterp->filter((x + xmin - center + 0.5) * ss);
-            k[x] = w;
-            ww += w;
+            k[x] = filterp->filter((x + xmin - center + 0.5) * ss);
+            ww += k[x];
         }
-        for (x = 0; x < xmax; x++) {
-            if (ww != 0.0) {
+        // Normalize coefficient, so that their sum is exactly 1.0
+        if (ww != 0.0) {
+            for (x = 0; x < xmax; x++) {
                 k[x] /= ww;
             }
         }
+
         // Remaining values should stay empty if they are used despite of xmax.
         for (; x < ksize; x++) {
             k[x] = 0;
