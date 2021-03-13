@@ -42,7 +42,7 @@ hamming_filter(double x) {
         return 0.0;
     }
     x = x * M_PI;
-    return sin(x) / x * (0.54f + 0.46f * cos(x));
+    return sinf(x) / x * (0.54f + 0.46f * cosf(x));
 }
 
 static inline double
@@ -69,7 +69,7 @@ sinc_filter(double x) {
         return 1.0;
     }
     x = x * M_PI;
-    return sin(x) / x;
+    return sinf(x) / x;
 }
 
 static inline double
