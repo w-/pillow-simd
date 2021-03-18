@@ -181,6 +181,114 @@ clip8(int in) {
 }
 
 int
+precompute_coeffs_distorted(
+    int inSize,
+    float *centers,
+    int outSize,
+    struct filter *filterp,
+    int **boundsp,
+    double **kkp) {
+    double support, filterscale;
+    double ww;
+    int xx, x, ksize, xmin, xmax;
+    int *bounds;
+    double *kk, *k;
+
+    ksize = 500;
+    for (xx = 0; xx < outSize; xx++) {
+        /* prepare for horizontal stretch */
+        if (xx == 0) {
+            filterscale = fabs(centers[xx + 1] - centers[xx]);
+        } else if (xx == outSize - 1) {
+            filterscale = fabs(centers[xx] - centers[xx - 1]);
+        } else {
+            filterscale = MIN(
+                fabs(centers[xx + 1] - centers[xx]),
+                fabs(centers[xx] - centers[xx - 1]));
+        }
+        filterscale = MAX(filterscale, 1.0);
+
+        /* determine support size (length of resampling filter) */
+        support = filterp->support * filterscale;
+
+        /* maximum number of coeffs */
+        ksize = MAX(ksize, (int)ceil(support) * 2 + 1);
+    }
+
+    // check for overflow
+    if (outSize > INT_MAX / (ksize * (int)sizeof(double))) {
+        ImagingError_MemoryError();
+        return 0;
+    }
+
+    /* coefficient buffer */
+    /* malloc check ok, overflow checked above */
+    kk = malloc(outSize * ksize * sizeof(double));
+    if (!kk) {
+        ImagingError_MemoryError();
+        return 0;
+    }
+
+    /* malloc check ok, ksize*sizeof(double) > 2*sizeof(int) */
+    bounds = malloc(outSize * 2 * sizeof(int));
+    if (!bounds) {
+        free(kk);
+        ImagingError_MemoryError();
+        return 0;
+    }
+
+    for (xx = 0; xx < outSize; xx++) {
+        /* prepare for horizontal stretch */
+        if (xx == 0) {
+            filterscale = fabs(centers[xx + 1] - centers[xx]);
+        } else if (xx == outSize - 1) {
+            filterscale = fabs(centers[xx] - centers[xx - 1]);
+        } else {
+            filterscale = MIN(
+                fabs(centers[xx + 1] - centers[xx]),
+                fabs(centers[xx] - centers[xx - 1]));
+        }
+        filterscale = MAX(filterscale, 1.0);
+
+        /* determine support size (length of resampling filter) */
+        support = filterp->support * filterscale;
+
+        // Round the value
+        xmin = (int)(centers[xx] - support + 0.5);
+        xmin = MAX(xmin, 0);
+        // Round the value
+        xmax = (int)(centers[xx] + support + 0.5);
+        xmax = MIN(xmax, inSize);
+        xmax -= xmin;
+
+        // Compute all coefficients for convolution
+        ww = 0.0;
+        k = &kk[xx * ksize];
+        for (x = 0; x < xmax; x++) {
+            k[x] = filterp->filter((x + xmin - centers[xx] + 0.5) / filterscale);
+            ww += k[x];
+        }
+        // Normalize coefficient, so that their sum is exactly 1.0
+        if (ww != 0.0) {
+            for (x = 0; x < xmax; x++) {
+                k[x] /= ww;
+            }
+        }
+
+        // Remaining values should stay empty if they are used despite of xmax.
+        for (; x < ksize; x++) {
+            k[x] = 0;
+        }
+        bounds[xx * 2 + 0] = xmin;
+        bounds[xx * 2 + 1] = xmax;
+    }
+    *boundsp = bounds;
+    *kkp = kk;
+    return ksize;
+}
+
+
+int
 precompute_coeffs(
     int inSize,
     float in0,
@@ -553,10 +661,13 @@ ImagingResampleInner(
     struct filter *filterp,
     float box[4],
     ResampleFunction ResampleHorizontal,
-    ResampleFunction ResampleVertical);
+    ResampleFunction ResampleVertical,
+    float *xcenters,
+    float *ycenters);
 
 Imaging
-ImagingResample(Imaging imIn, int xsize, int ysize, int filter, float box[4]) {
+ImagingResample(Imaging imIn, int xsize, int ysize, int filter, float box[4],
+    float *xcenters, float *ycenters) {
     struct filter *filterp;
     ResampleFunction ResampleHorizontal;
     ResampleFunction ResampleVertical;
@@ -608,7 +719,7 @@ ImagingResample(Imaging imIn, int xsize, int ysize, int filter, float box[4]) {
     }
 
     return ImagingResampleInner(
-        imIn, xsize, ysize, filterp, box, ResampleHorizontal, ResampleVertical);
+        imIn, xsize, ysize, filterp, box, ResampleHorizontal, ResampleVertical, xcenters, ycenters);
 }
 
 Imaging
@@ -619,7 +730,9 @@ ImagingResampleInner(
     struct filter *filterp,
     float box[4],
     ResampleFunction ResampleHorizontal,
-    ResampleFunction ResampleVertical) {
+    ResampleFunction ResampleVertical,
+    float *xcenters,
+    float *ycenters) {
     Imaging imTemp = NULL;
     Imaging imOut = NULL;
 
@@ -629,27 +742,42 @@ ImagingResampleInner(
     int *bounds_horiz, *bounds_vert;
     double *kk_horiz, *kk_vert;
 
-    need_horizontal = xsize != imIn->xsize || box[0] || box[2] != xsize;
-    need_vertical = ysize != imIn->ysize || box[1] || box[3] != ysize;
+    need_horizontal = xcenters || xsize != imIn->xsize || box[0] || box[2] != xsize;
+    need_vertical = ycenters || ysize != imIn->ysize || box[1] || box[3] != ysize;
 
-    ksize_horiz = precompute_coeffs(
-        imIn->xsize, box[0], box[2], xsize, filterp, &bounds_horiz, &kk_horiz);
+    if (xcenters) {
+        ksize_horiz = precompute_coeffs_distorted(
+            imIn->xsize, xcenters, xsize, filterp, &bounds_horiz, &kk_horiz);
+    } else {
+        ksize_horiz = precompute_coeffs(
+            imIn->xsize, box[0], box[2], xsize, filterp, &bounds_horiz, &kk_horiz);
+    }
     if (!ksize_horiz) {
         return NULL;
     }
 
-    ksize_vert = precompute_coeffs(
-        imIn->ysize, box[1], box[3], ysize, filterp, &bounds_vert, &kk_vert);
+    if (ycenters) {
+        ksize_vert = precompute_coeffs_distorted(
+            imIn->ysize, ycenters, ysize, filterp, &bounds_vert, &kk_vert);
+    } else {
+        ksize_vert = precompute_coeffs(
+            imIn->ysize, box[1], box[3], ysize, filterp, &bounds_vert, &kk_vert);
+    }
     if (!ksize_vert) {
         free(bounds_horiz);
         free(kk_horiz);
         return NULL;
     }
 
-    // First used row in the source image
-    ybox_first = bounds_vert[0];
-    // Last used row in the source image
-    ybox_last = bounds_vert[ysize * 2 - 2] + bounds_vert[ysize * 2 - 1];
+    if (ycenters) {
+        ybox_first = 0;
+        ybox_last = imIn->ysize;
+    } else {
+        // First used row in the source image
+        ybox_first = bounds_vert[0];
+        // Last used row in the source image
+        ybox_last = bounds_vert[ysize * 2 - 2] + bounds_vert[ysize * 2 - 1];
+    }
 
     /* two-pass resize, horizontal pass */
     if (need_horizontal) {

@@ -1936,6 +1936,23 @@ class Image:
 
         return self._new(self.im.resize(size, resample, box))
 
+    def resize_distorted(self, size, resample=BICUBIC, *, xcenters=None, ycenters=None):
+        def generate(from_size, to_size, callback):
+            centers = [0] * to_size
+            for i in range(to_size):
+                val = max(0.0, min(1.0, callback((i + .5) / to_size, i)))
+                centers[i] = val * from_size
+            return centers
+
+        if callable(xcenters):
+            xcenters = generate(self.size[0], size[0], xcenters)
+        if callable(ycenters):
+            ycenters = generate(self.size[1], size[1], ycenters)
+
+        self.load()
+
+        return self._new(self.im.resize_distorted(size, resample, xcenters, ycenters))
+
     def reduce(self, factor, box=None):
         """
         Returns a copy of the image reduced ``factor`` times.

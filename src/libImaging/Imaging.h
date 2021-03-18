@@ -358,7 +358,8 @@ ImagingTranspose(Imaging imOut, Imaging imIn);
 extern Imaging
 ImagingTransverse(Imaging imOut, Imaging imIn);
 extern Imaging
-ImagingResample(Imaging imIn, int xsize, int ysize, int filter, float box[4]);
+ImagingResample(Imaging imIn, int xsize, int ysize, int filter, float box[4],
+  float *xcenters, float *ycenters);
 extern Imaging
 ImagingReduce(Imaging imIn, int xscale, int yscale, int box[4]);
 extern Imaging

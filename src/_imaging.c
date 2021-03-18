@@ -1809,8 +1809,71 @@ _resize(ImagingObject *self, PyObject *args) {
         imOut = ImagingTransform(
             imOut, imIn, IMAGING_TRANSFORM_AFFINE, 0, 0, xsize, ysize, a, filter, 1);
     } else {
-        imOut = ImagingResample(imIn, xsize, ysize, filter, box);
+        imOut = ImagingResample(imIn, xsize, ysize, filter, box, NULL, NULL);
     }
+
+    return PyImagingNew(imOut);
+}
+
+static PyObject *
+_resize_distorted(ImagingObject *self, PyObject *args) {
+    Imaging imIn;
+    Imaging imOut;
+
+    int xsize, ysize;
+    int filter = IMAGING_TRANSFORM_BILINEAR;
+    Py_ssize_t xcenters_size = 0, ycenters_size = 0;
+    FLOAT32 *xcenters_data = NULL, *ycenters_data = NULL;
+    PyObject *xcenters = Py_None, *ycenters = Py_None;
+    float box[4] = {0, 0, 0, 0};
+
+    imIn = self->image;
+    box[2] = imIn->xsize;
+    box[3] = imIn->ysize;
+
+    if (!PyArg_ParseTuple(
+            args,
+            "(ii)|iOO",
+            &xsize,
+            &ysize,
+            &filter,
+            &xcenters,
+            &ycenters)) {
+        return NULL;
+    }
+
+    if (xsize < 1 || ysize < 1) {
+        return ImagingError_ValueError("height and width must be > 0");
+    }
+
+    if (xcenters != Py_None) {
+        xcenters_data = getlist(xcenters, &xcenters_size, NULL, TYPE_FLOAT32);
+        if (!xcenters_data) {
+            return NULL;
+        }
+    }
+    if (ycenters != Py_None) {
+        ycenters_data = getlist(ycenters, &ycenters_size, NULL, TYPE_FLOAT32);
+        if (!ycenters_data) {
+            free(xcenters_data);
+            return NULL;
+        }
+    }
+    if (xcenters_size && xcenters_size != (Py_ssize_t)xsize) {
+        free(xcenters_data);
+        free(ycenters_data);
+        return ImagingError_ValueError("bad xcenters size");
+    }
+    if (ycenters_size && ycenters_size != (Py_ssize_t)ysize) {
+        free(xcenters_data);
+        free(ycenters_data);
+        return ImagingError_ValueError("bad xcenters size");
+    }
+
+    imOut = ImagingResample(imIn, xsize, ysize, filter, box, xcenters_data, ycenters_data);
+
+    free(xcenters_data);
+    free(ycenters_data);
 
     return PyImagingNew(imOut);
 }
@@ -3443,6 +3506,7 @@ static struct PyMethodDef methods[] = {
     {"rankfilter", (PyCFunction)_rankfilter, 1},
 #endif
     {"resize", (PyCFunction)_resize, 1},
+    {"resize_distorted", (PyCFunction)_resize_distorted, 1},
     {"reduce", (PyCFunction)_reduce, 1},
     {"transpose", (PyCFunction)_transpose, 1},
     {"transform2", (PyCFunction)_transform2, 1},
