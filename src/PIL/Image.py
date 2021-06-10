@@ -3188,7 +3188,7 @@ class Exif(MutableMapping):
 
     def _fixup(self, value):
         try:
-            if len(value) == 1 and not isinstance(value, dict):
+            if len(value) == 1 and isinstance(value, tuple):
                 return value[0]
         except Exception:
             pass
@@ -3209,7 +3209,7 @@ class Exif(MutableMapping):
         else:
             from . import TiffImagePlugin
 
-            info = TiffImagePlugin.ImageFileDirectory_v1(self.head)
+            info = TiffImagePlugin.ImageFileDirectory_v2(self.head)
             info.load(self.fp)
             return self._fixup_dict(info)
 
@@ -3234,7 +3234,7 @@ class Exif(MutableMapping):
         # process dictionary
         from . import TiffImagePlugin
 
-        self._info = TiffImagePlugin.ImageFileDirectory_v1(self.head)
+        self._info = TiffImagePlugin.ImageFileDirectory_v2(self.head)
         self.endian = self._info._endian
         self.fp.seek(self._info.next)
         self._info.load(self.fp)
